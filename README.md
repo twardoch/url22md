@@ -1,137 +1,211 @@
 # url22md
 
-<!-- this_file: README.md -->
+Convert HTTP(S) URLs to clean Markdown files. Tries six extraction tools in cascade order, scores quality, and keeps the best result. Handles hundreds of URLs concurrently, tracks progress in a crash-safe JSONL report, and skips already-processed URLs on restart.
 
-Convert HTTP(S) URLs to Markdown with intelligent tool cascading and crash-resilient batch processing.
-
-## Installation
+## Install
 
 ```bash
-uv pip install url22md
+pip install url22md
 ```
 
-### Setup browser tools
-
-For Playwright and Crawl4ai support:
+For full functionality (JS-rendered pages), also run:
 
 ```bash
 playwright install chromium
 crawl4ai-setup
 ```
 
-### Configure cloud APIs (optional)
+## Quick start
 
-Set environment variables for cloud-based extractors:
-
-```bash
-export FIRECRAWL_API_KEY="your-api-key"
-export JINA_API_KEY="your-api-key"
-export WEBSHARE_PROXY_USER="your-user"
-export WEBSHARE_PROXY_PASS="your-pass"
-export WEBSHARE_DOMAIN_NAME="your-domain"
-export WEBSHARE_PROXY_PORT="your-port"
-```
-
-## Quick Usage
-
-### Single URL (CLI)
+Single URL:
 
 ```bash
-url22md --url "https://example.com"
+url22md --url "https://example.com/article"
 ```
 
-### Batch processing
+Batch from file:
 
 ```bash
-# From file (one URL per line)
-url22md --urls_path urls.txt
-
-# From stdin
-cat urls.txt | url22md
-
-# With custom output directory
-url22md --urls_path urls.txt --output_dir ./markdown
+url22md --urls_path urls.txt --output_dir ./output
 ```
 
-### Python API
-
-```python
-from url22md.converter import run_conversion
-
-summary = run_conversion(
-    urls=["https://example.com", "https://another.com"],
-    output_dir="./markdown",
-    concurrency=5,
-    timeout=30,
-)
-print(f"Success: {summary['succeeded']}/{summary['total']}")
-```
-
-## Tool Cascade
-
-url22md tries up to 6 extraction tools in order, skipping to the next if quality is insufficient:
-
-| # | Tool | Type | Speed | JS | Quality |
-|---|------|------|-------|----|----|
-| 1 | trafilatura | Native HTML parser | Fast | No | High |
-| 2 | crawl4ai | Headless browser | Medium | Yes | Very High |
-| 3 | playwright | Real Chromium | Slow | Yes | Very High |
-| 4 | firecrawl | Cloud API | Fast | Yes | High |
-| 5 | jina | Cloud API | Fast | No | Medium |
-| 6 | readability | Article extractor | Fast | No | Medium |
-
-Stops at first tool with quality ≥ 0.3, or returns best result if none meet threshold.
-
-## CLI Reference
+Pipe from stdin:
 
 ```bash
-url22md [OPTIONS]
+cat urls.txt | url22md --output_dir ./output
 ```
 
-### Input Options
+Force a specific tool:
 
-- `--url URL` : Single URL to convert
-- `--urls_path PATH` : File with one URL per line
+```bash
+url22md --url "https://spa-heavy-site.com" --tool 3
+```
 
-### Output Options
+## How it works
 
-- `--output_dir DIR` : Output directory for .md files (default: `.`)
-- `--jsonl PATH` : Report file path (default: `output_dir/_url2md.jsonl`)
+url22md tries up to six extraction tools in order. After each attempt it scores the Markdown output on length, headings, paragraph structure, links, and residual HTML. The first result scoring above the quality threshold (0.3) is accepted. If nothing meets the threshold, the best result is kept anyway.
 
-### Processing Options
+| # | Tool | JS rendering | Speed | Needs |
+|---|------|-------------|-------|-------|
+| 1 | [trafilatura](https://trafilatura.readthedocs.io/) | No | Fast | nothing |
+| 2 | [crawl4ai](https://docs.crawl4ai.com/) | Yes (headless browser) | Good | `crawl4ai-setup` |
+| 3 | [playwright](https://playwright.dev/python/) + [markdownify](https://github.com/matthewwithanm/python-markdownify) | Yes (real Chromium) | Good | `playwright install chromium` |
+| 4 | [firecrawl](https://firecrawl.dev/) | Yes (cloud, anti-bot) | Good | `FIRECRAWL_API_KEY` |
+| 5 | [Jina Reader](https://jina.ai/reader/) | Yes (cloud) | Fast | `JINA_API_KEY` |
+| 6 | [readability-lxml](https://github.com/buriy/python-readability) + markdownify | No | Fast | nothing |
 
-- `--tool N` : Force specific tool (1-6). If omitted, cascade through all.
-- `--concurrency N` : Max concurrent URLs (default: 5)
-- `--timeout N` : Seconds per tool attempt (default: 30)
-- `--proxy` : Use Webshare proxy if WEBSHARE_* env vars set
+Tools 1, 2, 3, and 6 run locally. Tools 4 and 5 call cloud APIs and require API keys.
 
-### Control Options
+## CLI reference
 
-- `--clean` : Delete existing report before running
-- `--clean_all` : Delete report and all output files before running
-- `--verbose` : Enable debug logging
+```
+url22md [flags]
+```
 
-## Report Format
+**Input** (at least one required):
 
-The JSONL report (`_url2md.jsonl`) tracks all conversions:
+| Flag | Description |
+|------|-------------|
+| `--url URL` | Single URL to convert |
+| `--urls_path FILE` | Text file with one URL per line |
+| *(stdin)* | Pipe URLs, one per line |
+
+**Output**:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output_dir DIR` | `.` | Directory for `.md` files |
+| `--jsonl PATH` | `DIR/_url2md.jsonl` | JSONL progress report path |
+
+**Extraction control**:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--tool N` | cascade 1-6 | Force a specific tool (1-6) |
+| `--proxy` | off | Route through Webshare proxy |
+| `--concurrency N` | 5 | Max parallel URL conversions |
+| `--timeout N` | 30 | Per-tool timeout in seconds |
+
+**Housekeeping**:
+
+| Flag | Description |
+|------|-------------|
+| `--clean` | Delete existing JSONL report before starting |
+| `--clean_all` | Delete report and all `.md` files listed in it |
+| `--verbose` | Debug-level logging to stderr |
+
+## JSONL report
+
+Each processed URL appends one JSON line to the report immediately (crash-safe):
 
 ```json
-{"url": "https://example.com", "filename": "example-com.md", "tool": "trafilatura", "success": true, "quality": 0.65, "error": null, "timestamp": "2026-03-26T10:30:45+00:00"}
+{"url": "https://example.com", "filename": "example-com.md", "tool": "trafilatura", "success": true, "quality": 0.7, "error": null, "timestamp": "2026-03-26T22:15:00+00:00"}
 ```
 
-Already-processed URLs are automatically skipped on re-run, making batch operations resumable after crashes.
+On the next run, URLs already in the report are skipped. Use `--clean` to start fresh.
 
-## Environment Variables
+## Python API
 
-| Variable | Purpose |
-|----------|---------|
-| `WEBSHARE_PROXY_USER` | Webshare username |
-| `WEBSHARE_PROXY_PASS` | Webshare password |
-| `WEBSHARE_DOMAIN_NAME` | Webshare domain |
-| `WEBSHARE_PROXY_PORT` | Webshare port |
-| `FIRECRAWL_API_KEY` | Firecrawl API key |
-| `JINA_API_KEY` | Jina Reader API key |
+```python
+from url22md import run_conversion
+
+summary = run_conversion(
+    urls=["https://example.com", "https://docs.python.org/3/"],
+    output_dir="./output",
+    concurrency=10,
+    tool=1,          # optional: force trafilatura only
+    verbose=True,
+)
+print(summary)
+# {"total": 2, "processed": 2, "skipped": 0, "succeeded": 2, "failed": 0}
+```
+
+Lower-level access:
+
+```python
+import asyncio
+from url22md.tools import extract_with_trafilatura, extract_with_playwright
+
+async def main():
+    result = await extract_with_trafilatura("https://example.com")
+    if not result.success:
+        result = await extract_with_playwright("https://example.com")
+    print(result.markdown)
+
+asyncio.run(main())
+```
+
+Quality scoring:
+
+```python
+from url22md import assess_quality
+
+score = assess_quality("# Title\n\nA paragraph.\n\nAnother paragraph.")
+print(score)  # 0.6
+```
+
+## Proxy support
+
+url22md supports [Webshare](https://www.webshare.io/) proxies. Set these environment variables:
+
+```bash
+export WEBSHARE_PROXY_USER="your_user"
+export WEBSHARE_PROXY_PASS="your_pass"
+export WEBSHARE_DOMAIN_NAME="proxy.webshare.io"
+export WEBSHARE_PROXY_PORT="80"
+```
+
+Then pass `--proxy`:
+
+```bash
+url22md --url "https://geo-restricted-site.com" --proxy
+```
+
+## Cloud API keys
+
+For tools 4 and 5, set the corresponding environment variable:
+
+```bash
+export FIRECRAWL_API_KEY="fc-..."    # tool 4
+export JINA_API_KEY="jina_..."       # tool 5
+```
+
+These tools are only attempted when their API key is present. Without them, the cascade skips to the next tool.
+
+## Output structure
+
+```
+output_dir/
+  example-com.md                     # Markdown content
+  docs-python-org-3.md               # Markdown content
+  _url2md.jsonl                      # Progress report
+```
+
+Filenames are generated from URLs using `slugify` + `pathvalidate`, producing filesystem-safe names like `example-com-article-id-42.md`.
+
+## Development
+
+```bash
+git clone https://github.com/twardoch/url22md
+cd url22md
+uv pip install --system -e .
+playwright install chromium
+
+# Tests (48 unit tests, no network required)
+uvx hatch test
+
+# Lint
+uvx ruff check src/url22md/ tests/
+
+# Build
+uvx hatch build
+
+# Publish
+uv publish
+```
+
+Versioning is derived from git tags via [hatch-vcs](https://github.com/ofek/hatch-vcs). Tag `v1.2.3` produces version `1.2.3`.
 
 ## License
 
-Apache License 2.0
+[Apache 2.0](LICENSE)

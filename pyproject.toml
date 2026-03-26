@@ -38,6 +38,9 @@ local_scheme = "no-local-version"
 [tool.hatch.build.hooks.vcs]
 version-file = "src/url22md/_version.py"
 
+[tool.hatch.build]
+sources = ["src"]
+
 [tool.hatch.build.targets.sdist]
 exclude = ["_private/", "issues/", ".omc/", "dist/", ".DS_Store", "*.egg-info/"]
 
