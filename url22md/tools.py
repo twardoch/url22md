@@ -81,9 +81,9 @@ async def extract_with_trafilatura(
     """Extract markdown using trafilatura (fast, no JS rendering)."""
     tool = "trafilatura"
     try:
-        import trafilatura
 
         def _fetch_and_extract() -> str:
+            import trafilatura
             import trafilatura.downloads
 
             # trafilatura reads proxy from module global, not config
