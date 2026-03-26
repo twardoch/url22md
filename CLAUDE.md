@@ -17,14 +17,20 @@ playwright install chromium
 crawl4ai-setup
 
 # Run tests (48 unit tests, no network needed)
-python -m pytest tests/ -v
+uvx hatch test
 
 # Lint
 uvx ruff check url22md/ tests/
 uvx ruff format --check url22md/ tests/
 
-# Full lint+format+test cycle
-./test.sh
+# Build
+uvx hatch build
+
+# Publish
+uv publish
+
+# Version: derived from git tags via hatch-vcs (setuptools-scm)
+# Tag with v1.2.3 → version 1.2.3. Dirty/untagged → X.Y.Z.dev0
 
 # Run CLI
 python -m url22md --url "https://example.com"
