@@ -73,7 +73,7 @@ sdist/
 share/python-wheels/
 Temporary Items
 Thumbs.db
-url22md/_version.py
+_version.py
 uv.lock
 var/
 venv.bak/
