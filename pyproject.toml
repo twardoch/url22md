@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "url22md"
+version = "1.0.0"
+description = "Python package to convert HTTP(S) URLs to Markdown"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+dependencies = [
+    "fire>=0.5",
+    "rich>=13.0",
+    "httpx>=0.27",
+    "tenacity>=8.0",
+    "trafilatura>=1.0",
+    "crawl4ai>=0.4",
+    "playwright>=1.40",
+    "markdownify>=0.13",
+    "firecrawl-py>=1.0",
+    "readability-lxml>=0.8",
+    "html2text>=2024.2",
+    "python-slugify[unidecode]>=8.0",
+    "pathvalidate>=3.0",
+    "loguru>=0.7",
+]
+
+[project.scripts]
+url22md = "url22md.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["url22md"]
+
+[tool.hatch.envs.test]
+dependencies = [
+    "pytest",
+    "pytest-cov",
+]
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.12"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
