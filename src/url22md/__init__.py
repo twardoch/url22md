@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from url22md.converter import run_conversion
-from url22md.tools import QUALITY_THRESHOLD, TOOLS, ToolResult, assess_quality
+from url22md.tools import FALLBACKS, QUALITY_THRESHOLD, TOOLS, ToolResult, assess_quality
 from url22md.utils import url2filename
 
 try:
@@ -20,6 +20,7 @@ except ImportError:
 this_file = "src/url22md/__init__.py"
 
 __all__ = [
+    "FALLBACKS",
     "QUALITY_THRESHOLD",
     "TOOLS",
     "ToolResult",

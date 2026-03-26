@@ -11,7 +11,7 @@ from loguru import logger
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 
-from url22md.tools import QUALITY_THRESHOLD, TOOLS, ToolResult
+from url22md.tools import FALLBACKS, QUALITY_THRESHOLD, TOOLS, ToolResult
 from url22md.utils import append_jsonl_record, build_proxy_url, read_jsonl_report, setup_logging, url2filename
 
 
@@ -20,40 +20,43 @@ async def convert_single_url(
     proxy_url: str | None,
     tool: int | None = None,
     timeout: int = 30,
+    minify: bool = False,
 ) -> ToolResult:
-    """Convert a single URL to Markdown using cascading tool fallback.
+    """Convert a single URL to Markdown following directed fallback chains.
 
-    If *tool* is specified (1-6), only that tool is attempted. Otherwise tools
-    are tried in order 1 -> 2 -> 3 -> 4 -> 5 -> 6 and the first result whose
-    quality_score meets QUALITY_THRESHOLD is returned. When no result meets the
-    threshold, the best result seen so far is returned.
+    Each tool has a specific fallback (see FALLBACKS in tools.py). Starting from
+    *tool* (default 1), on failure or low quality the chain is followed until a
+    good result is found or the chain ends (fallback is None).
 
     Args:
         url: The HTTP(S) URL to convert.
         proxy_url: Optional proxy URL for tools that support it.
-        tool: If given, restrict to this single tool number.
+        tool: Starting tool number (1-7, default 1).
         timeout: Per-tool timeout in seconds.
+        minify: Article-only extraction: readability for tools 1-4, minify for tool 5.
 
     Returns:
         The best ToolResult obtained.
     """
-    tool_ids: list[int] = [tool] if tool is not None else list(TOOLS.keys())
-
+    current_tid: int | None = tool if tool is not None else 1
+    visited: set[int] = set()
     best: ToolResult | None = None
 
-    for tid in tool_ids:
-        entry = TOOLS.get(tid)
+    while current_tid is not None and current_tid not in visited:
+        visited.add(current_tid)
+
+        entry = TOOLS.get(current_tid)
         if entry is None:
-            logger.warning("Unknown tool id {}, skipping", tid)
-            continue
+            logger.warning("Unknown tool id {}, stopping", current_tid)
+            break
 
         tool_name, tool_fn = entry
 
-        logger.debug("Trying tool {} ({}) for {}", tid, tool_name, url)
+        logger.debug("Trying tool {} ({}) for {}", current_tid, tool_name, url)
         try:
-            result = await tool_fn(url=url, proxy_url=proxy_url, timeout=timeout)
+            result = await tool_fn(url=url, proxy_url=proxy_url, timeout=timeout, minify=minify)
         except Exception as exc:
-            logger.debug("Tool {} ({}) raised {}: {}", tid, tool_name, type(exc).__name__, exc)
+            logger.debug("Tool {} ({}) raised {}: {}", current_tid, tool_name, type(exc).__name__, exc)
             result = ToolResult(
                 success=False,
                 markdown="",
@@ -62,14 +65,13 @@ async def convert_single_url(
                 error=f"{type(exc).__name__}: {exc}",
             )
 
-        # Track the best result we have seen so far.
         if best is None or result.quality_score > best.quality_score:
             best = result
 
         if result.success and result.quality_score >= QUALITY_THRESHOLD:
             logger.debug(
                 "Tool {} ({}) succeeded for {} with quality {:.2f}",
-                tid,
+                current_tid,
                 tool_name,
                 url,
                 result.quality_score,
@@ -77,19 +79,19 @@ async def convert_single_url(
             return result
 
         logger.debug(
-            "Tool {} ({}) quality {:.2f} below threshold {:.2f} for {}",
-            tid,
+            "Tool {} ({}) quality {:.2f} below threshold {:.2f} for {}, following fallback",
+            current_tid,
             tool_name,
             result.quality_score,
             QUALITY_THRESHOLD,
             url,
         )
 
-    # Return whatever we have, even if below threshold.
+        current_tid = FALLBACKS.get(current_tid)
+
     if best is not None:
         return best
 
-    # Should not happen (TOOLS is non-empty), but guard against it.
     return ToolResult(
         success=False,
         markdown="",
@@ -105,14 +107,16 @@ async def process_urls(
     jsonl_path: Path,
     proxy_url: str | None = None,
     tool: int | None = None,
+    force: bool = False,
+    minify: bool = False,
     concurrency: int = 5,
     timeout: int = 30,
 ) -> dict:
     """Process a list of URLs concurrently, writing Markdown files and a JSONL report.
 
-    Already-processed URLs (present in *jsonl_path*) are skipped. Results are
-    appended to the JSONL report immediately after each URL is processed so that
-    a crash does not invalidate earlier work.
+    Already-processed URLs (present in *jsonl_path*) are skipped unless *force*
+    is True. Results are appended to the JSONL report immediately after each URL
+    is processed so that a crash does not invalidate earlier work.
 
     Args:
         urls: URLs to convert.
@@ -120,13 +124,15 @@ async def process_urls(
         jsonl_path: Path to the JSONL report file.
         proxy_url: Optional proxy URL.
         tool: Restrict to a single tool number, or None for cascade.
+        force: Re-process URLs even if already in the report.
+        minify: Article-only extraction: readability-lxml for tools 1 & 3, pruning filter for tool 2.
         concurrency: Maximum number of concurrent conversions.
         timeout: Per-tool timeout in seconds.
 
     Returns:
         Summary dict with keys: total, processed, skipped, succeeded, failed.
     """
-    existing = read_jsonl_report(jsonl_path)
+    existing = {} if force else read_jsonl_report(jsonl_path)
     to_process = [u for u in urls if u not in existing]
     skipped = len(urls) - len(to_process)
 
@@ -140,7 +146,7 @@ async def process_urls(
     async def _handle(url: str, idx: int, total: int, progress: Progress, task_id) -> None:
         nonlocal succeeded, failed
         async with sem:
-            result = await convert_single_url(url, proxy_url, tool=tool, timeout=timeout)
+            result = await convert_single_url(url, proxy_url, tool=tool, timeout=timeout, minify=minify)
 
             filename = url2filename(url) + ".md"
             filepath = output_dir / filename
@@ -218,6 +224,8 @@ def run_conversion(
     jsonl_path: str | Path | None = None,
     proxy: bool = False,
     tool: int | None = None,
+    force: bool = False,
+    minify: bool = False,
     clean: bool = False,
     clean_all: bool = False,
     concurrency: int = 5,
@@ -236,6 +244,8 @@ def run_conversion(
         jsonl_path: Path to JSONL report file. Defaults to ``output_dir/_url2md.jsonl``.
         proxy: Whether to use the Webshare proxy (requires WEBSHARE_* env vars).
         tool: Restrict to a single tool number (1-6), or None for cascade.
+        force: Re-process URLs even if already in the JSONL report.
+        minify: Article-only extraction: readability-lxml for tools 1 & 3, pruning filter for tool 2.
         clean: Delete the existing JSONL report before processing.
         clean_all: Delete the JSONL report and all .md files listed in it.
         concurrency: Maximum number of concurrent URL conversions.
@@ -286,6 +296,8 @@ def run_conversion(
             jsonl_path=report,
             proxy_url=proxy_url,
             tool=tool,
+            force=force,
+            minify=minify,
             concurrency=concurrency,
             timeout=timeout,
         )

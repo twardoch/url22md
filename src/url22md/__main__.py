@@ -14,6 +14,8 @@ def cli(
     jsonl: str | Path | None = None,
     tool: int | None = None,
     proxy: bool = False,
+    force: bool = False,
+    minify: bool = False,
     clean: bool = False,
     Clean_all: bool = False,
     Jobs: int = 5,
@@ -27,8 +29,10 @@ def cli(
         Urls_path: Path to file with one URL per line.
         output_dir: Directory for output .md files (default: current dir).
         jsonl: Path for JSONL progress report (default: output_dir/_url2md.jsonl).
-        tool: Force specific tool (1=trafilatura, 2=crawl4ai, 3=playwright, 4=firecrawl, 5=jina, 6=readability).
+        tool: Start from tool (1=trafilatura, 2=trafilatura-strict, 3=readability, 4=readability-strict, 5=playwright, 6=firecrawl, 7=jina, 8=crawl4ai, 9=crawl4ai-fit).
         proxy: Use Webshare proxy (requires WEBSHARE_* env vars).
+        force: Re-process URLs even if already in the JSONL report.
+        minify: Article-only extraction: readability-lxml for tools 1 & 3, pruning filter for tool 2.
         clean: Delete existing report file before running.
         Clean_all: Delete existing report and output files before running.
         Jobs: Max concurrent URL processing (default: 5).
@@ -40,7 +44,7 @@ def cli(
     urls = read_urls_input(url, Urls_path)
     if not urls:
         from rich.console import Console
-        Console().print("[red]No URLs provided. Use --url, --urls_path, or pipe via stdin.[/red]")
+        Console().print("[red]No URLs provided. Use --url, --Urls_path, or pipe via stdin.[/red]")
         raise SystemExit(1)
 
     run_conversion(
@@ -49,6 +53,8 @@ def cli(
         jsonl_path=Path(jsonl) if jsonl else None,
         proxy=proxy,
         tool=tool,
+        force=force,
+        minify=minify,
         clean=clean,
         clean_all=Clean_all,
         concurrency=Jobs,

@@ -1,6 +1,6 @@
 # url22md
 
-Convert HTTP(S) URLs to clean Markdown files. Tries six extraction tools in cascade order, scores quality, and keeps the best result. Handles hundreds of URLs concurrently, tracks progress in a crash-safe JSONL report, and skips already-processed URLs on restart.
+Convert HTTP(S) URLs to clean Markdown files. Uses seven extraction tools with directed fallback chains, scores quality, and keeps the best result. Handles hundreds of URLs concurrently, tracks progress in a crash-safe JSONL report, and skips already-processed URLs on restart.
 
 ## Install
 
@@ -43,18 +43,21 @@ url22md --url "https://spa-heavy-site.com" --tool 3
 
 ## How it works
 
-url22md tries up to six extraction tools in order. After each attempt it scores the Markdown output on length, headings, paragraph structure, links, and residual HTML. The first result scoring above the quality threshold (0.3) is accepted. If nothing meets the threshold, the best result is kept anyway.
+url22md tries extraction tools following a directed fallback chain. Each tool has a specific next-tool on failure (not a simple linear sequence). After each attempt it scores the Markdown on prose word count, sentence structure, and penalises CSS/JS boilerplate. The first result scoring above the quality threshold (0.5) is accepted. If nothing meets the threshold, the best result is kept anyway.
 
-| # | Tool | JS rendering | Speed | Needs |
-|---|------|-------------|-------|-------|
-| 1 | [trafilatura](https://trafilatura.readthedocs.io/) | No | Fast | nothing |
-| 2 | [crawl4ai](https://docs.crawl4ai.com/) | Yes (headless browser) | Good | `crawl4ai-setup` |
-| 3 | [playwright](https://playwright.dev/python/) + [markdownify](https://github.com/matthewwithanm/python-markdownify) | Yes (real Chromium) | Good | `playwright install chromium` |
-| 4 | [firecrawl](https://firecrawl.dev/) | Yes (cloud, anti-bot) | Good | `FIRECRAWL_API_KEY` |
-| 5 | [Jina Reader](https://jina.ai/reader/) | Yes (cloud) | Fast | `JINA_API_KEY` |
-| 6 | [readability-lxml](https://github.com/buriy/python-readability) + markdownify | No | Fast | nothing |
+| # | Tool | JS | Speed | Fallback | Needs |
+|---|------|----|-------|----------|-------|
+| 1 | [trafilatura](https://trafilatura.readthedocs.io/) | No | Fast | → 5 | nothing |
+| 2 | trafilatura (strict) | No | Fast | none | nothing |
+| 3 | [readability-lxml](https://github.com/buriy/python-readability) + [markdownify](https://github.com/matthewwithanm/python-markdownify) | No | Fast | → 5 | nothing |
+| 4 | readability + markdownify (strict) | No | Fast | none | nothing |
+| 5 | [playwright](https://playwright.dev/python/) + markdownify | Yes | Good | → 6 | `playwright install chromium` |
+| 6 | [firecrawl](https://firecrawl.dev/) | Yes | Good | → 7 | `FIRECRAWL_API_KEY` |
+| 7 | [Jina Reader](https://jina.ai/reader/) | Yes | Fast | → 2 | `JINA_API_KEY` |
+| 8 | [crawl4ai](https://docs.crawl4ai.com/) | Yes | Good | → 6 | `crawl4ai-setup` |
+| 9 | crawl4ai (fit) | Yes | Good | → 5 | `crawl4ai-setup` |
 
-Tools 1, 2, 3, and 6 run locally. Tools 4 and 5 call cloud APIs and require API keys.
+Tools 1-5, 8-9 run locally. Tools 6 and 7 call cloud APIs and require API keys. Tool 8 uses crawl4ai with stealth mode and anti-bot features (magic, user simulation, navigator override). Tool 9 adds a PruningContentFilter for article-only fit_markdown output. The default cascade starting from tool 1 follows: 1 → 5 → 6 → 7 → 2 (stop).
 
 ## CLI reference
 
@@ -81,7 +84,7 @@ url22md [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--tool N` | cascade 1-6 | Force a specific tool (1-6) |
+| `--tool N` | 1 (cascade) | Start from tool N (1-9), follows fallback chain |
 | `--proxy` | off | Route through Webshare proxy |
 | `--concurrency N` | 5 | Max parallel URL conversions |
 | `--timeout N` | 30 | Per-tool timeout in seconds |
@@ -90,6 +93,8 @@ url22md [flags]
 
 | Flag | Description |
 |------|-------------|
+| `--force` | Re-process URLs even if already in the JSONL report |
+| `--minify` | Article-only extraction: readability-lxml for tools 1 & 3, pruning filter for tool 2 |
 | `--clean` | Delete existing JSONL report before starting |
 | `--clean_all` | Delete report and all `.md` files listed in it |
 | `--verbose` | Debug-level logging to stderr |
