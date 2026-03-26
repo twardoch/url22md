@@ -1,5 +1,5 @@
 """Utility functions for the url22md package."""
-# this_file: url22md/utils.py
+# this_file: src/url22md/utils.py
 
 import json
 import os

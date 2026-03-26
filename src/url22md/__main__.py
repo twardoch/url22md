@@ -1,5 +1,5 @@
 """CLI entry point for url22md."""
-# this_file: url22md/__main__.py
+# this_file: src/url22md/__main__.py
 
 import fire
 from url22md.utils import read_urls_input, setup_logging

@@ -18,8 +18,8 @@ from dataclasses import dataclass
 
 from loguru import logger
 
-# this_file: url22md/tools.py
-this_file = "url22md/tools.py"
+# this_file: src/url22md/tools.py
+this_file = "src/url22md/tools.py"
 
 
 @dataclass

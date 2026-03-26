@@ -1,5 +1,5 @@
 """url22md - Convert HTTP(S) URLs to Markdown."""
-# this_file: url22md/__init__.py
+# this_file: src/url22md/__init__.py
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ except ImportError:
     except Exception:
         __version__ = "0.0.0"
 
-this_file = "url22md/__init__.py"
+this_file = "src/url22md/__init__.py"
 
 __all__ = [
     "QUALITY_THRESHOLD",

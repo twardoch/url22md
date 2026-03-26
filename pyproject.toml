@@ -36,10 +36,13 @@ version_scheme = "guess-next-dev"
 local_scheme = "no-local-version"
 
 [tool.hatch.build.hooks.vcs]
-version-file = "url22md/_version.py"
+version-file = "src/url22md/_version.py"
+
+[tool.hatch.build.targets.sdist]
+exclude = ["_private/", "issues/", ".omc/", "dist/", ".DS_Store", "*.egg-info/"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["url22md"]
+packages = ["src/url22md"]
 
 [tool.hatch.envs.test]
 dependencies = [
