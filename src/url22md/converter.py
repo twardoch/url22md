@@ -214,8 +214,8 @@ async def process_urls(
 
 def run_conversion(
     urls: list[str],
-    output_dir: str = ".",
-    jsonl_path: str | None = None,
+    output_dir: str | Path = ".",
+    jsonl_path: str | Path | None = None,
     proxy: bool = False,
     tool: int | None = None,
     clean: bool = False,

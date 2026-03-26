@@ -5,10 +5,35 @@ build-backend = "hatchling.build"
 [project]
 name = "url22md"
 dynamic = ["version"]
-description = "Python package to convert HTTP(S) URLs to Markdown"
+description = "Convert URLs to clean Markdown via a multi-tool fallback cascade"
 requires-python = ">=3.12"
 license = "Apache-2.0"
 readme = "README.md"
+authors = [
+    { name = "Adam Twardoch", email = "adam@twardoch.com" },
+]
+keywords = [
+    "markdown",
+    "web-scraping",
+    "url",
+    "html-to-markdown",
+    "content-extraction",
+    "trafilatura",
+    "crawl4ai",
+    "playwright",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Text Processing :: Markup :: Markdown",
+    "Typing :: Typed",
+]
 dependencies = [
     "fire>=0.5",
     "rich>=13.0",
@@ -25,6 +50,11 @@ dependencies = [
     "pathvalidate>=3.0",
     "loguru>=0.7",
 ]
+
+[project.urls]
+Homepage = "https://github.com/twardoch/url22md"
+Repository = "https://github.com/twardoch/url22md"
+Issues = "https://github.com/twardoch/url22md/issues"
 
 [project.scripts]
 url22md = "url22md.__main__:main"
