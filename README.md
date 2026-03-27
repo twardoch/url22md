@@ -77,8 +77,18 @@ url22md [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--output_dir DIR` | `.` | Directory for `.md` files |
+| `--format FMT` | `md` | Output format (see below) |
+| `--output_dir DIR` | `.` | Directory for output files |
 | `--jsonl PATH` | `DIR/_url2md.jsonl` | JSONL progress report path |
+
+**Output formats**:
+
+| Format | Behaviour |
+|--------|-----------|
+| `md` | One `.md` file per URL + JSONL report (default) |
+| `all` | All results in a single `combined.md` (HR + H1 URL separators) + JSONL report |
+| `json` | JSONL report with `markdown` content included (no `.md` files) |
+| `-` | JSONL with `markdown` to stdout (no files written) |
 
 **Extraction control**:
 
@@ -86,46 +96,72 @@ url22md [flags]
 |------|---------|-------------|
 | `--tool N` | 1 (cascade) | Start from tool N (1-9), follows fallback chain |
 | `--proxy` | off | Route through Webshare proxy |
-| `--concurrency N` | 5 | Max parallel URL conversions |
-| `--timeout N` | 30 | Per-tool timeout in seconds |
+| `--Jobs N` | 5 | Max parallel URL conversions |
+| `--Timeout N` | 30 | Per-tool timeout in seconds |
 
 **Housekeeping**:
 
 | Flag | Description |
 |------|-------------|
-| `--force` | Re-process URLs even if already in the JSONL report |
-| `--minify` | Article-only extraction: readability-lxml for tools 1 & 3, pruning filter for tool 2 |
+| `--Force` | Re-process URLs even if already in the JSONL report |
+| `--minify` | Article-only extraction: readability for tools 1-4, pruning for crawl4ai |
 | `--clean` | Delete existing JSONL report before starting |
-| `--clean_all` | Delete report and all `.md` files listed in it |
+| `--Clean_all` | Delete report and all output files listed in it |
 | `--verbose` | Debug-level logging to stderr |
 
 ## JSONL report
 
-Each processed URL appends one JSON line to the report immediately (crash-safe):
+Each record contains:
 
 ```json
 {"url": "https://example.com", "filename": "example-com.md", "tool": "trafilatura", "success": true, "quality": 0.7, "error": null, "timestamp": "2026-03-26T22:15:00+00:00"}
 ```
 
-On the next run, URLs already in the report are skipped. Use `--clean` to start fresh.
+With `--format json` or `--format -`, a `"markdown"` key with the full content is included. On the next run, URLs already in the report are skipped. Use `--clean` to start fresh.
 
 ## Python API
+
+`run_conversion()` returns a list of result records. Without `format`, no files are written:
 
 ```python
 from url22md import run_conversion
 
-summary = run_conversion(
+records = run_conversion(
     urls=["https://example.com", "https://docs.python.org/3/"],
-    output_dir="./output",
     concurrency=10,
-    tool=1,          # optional: force trafilatura only
-    verbose=True,
 )
-print(summary)
-# {"total": 2, "processed": 2, "skipped": 0, "succeeded": 2, "failed": 0}
+for rec in records:
+    print(rec["url"], rec["tool"], rec["quality"])
+    print(rec["markdown"][:200])
 ```
 
-Lower-level access:
+Each record dict has: `url`, `filename`, `tool`, `success`, `quality`, `error`, `markdown`, `timestamp`.
+
+To also write files, pass `format`:
+
+```python
+records = run_conversion(
+    urls=["https://example.com"],
+    output_dir="./output",
+    format="md",       # writes individual .md files + JSONL report
+)
+```
+
+Lower-level async access:
+
+```python
+import asyncio
+from url22md import convert_single_url
+
+async def main():
+    result = await convert_single_url("https://example.com", proxy_url=None)
+    print(result.tool_name, result.quality_score)
+    print(result.markdown)
+
+asyncio.run(main())
+```
+
+Individual tool functions:
 
 ```python
 import asyncio

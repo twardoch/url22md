@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from url22md.converter import run_conversion
+from url22md.converter import convert_single_url, run_conversion
 from url22md.tools import FALLBACKS, QUALITY_THRESHOLD, TOOLS, ToolResult, assess_quality
 from url22md.utils import url2filename
 
@@ -25,6 +25,7 @@ __all__ = [
     "TOOLS",
     "ToolResult",
     "assess_quality",
+    "convert_single_url",
     "run_conversion",
     "url2filename",
 ]

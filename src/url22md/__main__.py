@@ -10,11 +10,12 @@ from pathlib import Path
 def cli(
     url: str | None = None,
     Urls_path: str | None = None,
+    format: str = "md",
     output_dir: str | Path = ".",
     jsonl: str | Path | None = None,
     tool: int | None = None,
     proxy: bool = False,
-    force: bool = False,
+    Force: bool = False,
     minify: bool = False,
     clean: bool = False,
     Clean_all: bool = False,
@@ -27,12 +28,16 @@ def cli(
     Args:
         url: Single URL to convert.
         Urls_path: Path to file with one URL per line.
-        output_dir: Directory for output .md files (default: current dir).
+        format: Output format: "md"=one .md per URL, "all"=single combined .md,
+                "json"=JSONL with markdown content, "-"=JSONL to stdout.
+        output_dir: Directory for output files (default: current dir).
         jsonl: Path for JSONL progress report (default: output_dir/_url2md.jsonl).
-        tool: Start from tool (1=trafilatura, 2=trafilatura-strict, 3=readability, 4=readability-strict, 5=playwright, 6=firecrawl, 7=jina, 8=crawl4ai, 9=crawl4ai-fit).
+        tool: Start from tool (1=trafilatura, 2=trafilatura-strict, 3=readability,
+              4=readability-strict, 5=playwright, 6=firecrawl, 7=jina, 8=crawl4ai,
+              9=crawl4ai-fit).
         proxy: Use Webshare proxy (requires WEBSHARE_* env vars).
-        force: Re-process URLs even if already in the JSONL report.
-        minify: Article-only extraction: readability-lxml for tools 1 & 3, pruning filter for tool 2.
+        Force: Re-process URLs even if already in the JSONL report.
+        minify: Article-only extraction: readability for tools 1-4, pruning for crawl4ai.
         clean: Delete existing report file before running.
         Clean_all: Delete existing report and output files before running.
         Jobs: Max concurrent URL processing (default: 5).
@@ -40,7 +45,7 @@ def cli(
         verbose: Enable debug logging.
     """
     setup_logging(verbose)
-    
+
     urls = read_urls_input(url, Urls_path)
     if not urls:
         from rich.console import Console
@@ -51,9 +56,10 @@ def cli(
         urls=urls,
         output_dir=Path(output_dir),
         jsonl_path=Path(jsonl) if jsonl else None,
+        format=format,
         proxy=proxy,
         tool=tool,
-        force=force,
+        force=Force,
         minify=minify,
         clean=clean,
         clean_all=Clean_all,

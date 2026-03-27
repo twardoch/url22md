@@ -7,6 +7,7 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
+| #1994 | 12:57 AM | ✅ | Exported convert_single_url function to public API | ~301 |
 | #1991 | 12:43 AM | 🟣 | Added crawl4ai tools with anti-bot capabilities and content filtering | ~427 |
 | #1990 | " | 🟣 | Added crawl4ai extraction tools with anti-bot capabilities | ~573 |
 | #1989 | 12:41 AM | 🟣 | Added --force and --minify CLI flags with minify implementation | ~255 |
