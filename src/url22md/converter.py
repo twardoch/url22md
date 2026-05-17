@@ -26,19 +26,18 @@ async def convert_single_url(
 ) -> ToolResult:
     """Convert a single URL to Markdown following directed fallback chains.
 
-    Each tool has a specific fallback (see FALLBACKS in tools.py). Starting from
-    *tool* (default 1), on failure or low quality the chain is followed until a
-    good result is found or the chain ends (fallback is None).
+    Starts with a primary tool and follows a specific fallback path if extraction fails 
+    or returns low quality results (score < QUALITY_THRESHOLD).
 
     Args:
-        url: The HTTP(S) URL to convert.
-        proxy_url: Optional proxy URL for tools that support it.
-        tool: Starting tool number (1-9, default 1).
-        timeout: Per-tool timeout in seconds.
-        minify: Article-only extraction via readability/pruning filter.
+        url: The target HTTP/HTTPS URL.
+        proxy_url: Optional proxy string for tools that support it.
+        tool: Starting tool ID (1-9). Defaults to 1 (trafilatura).
+        timeout: Time limit in seconds per tool attempt.
+        minify: If True, uses article-only extraction filters to strip menus and boilerplate.
 
     Returns:
-        The best ToolResult obtained.
+        A ToolResult object containing the best extracted markdown and metadata.
     """
     current_tid: int | None = tool if tool is not None else 1
     visited: set[int] = set()
@@ -113,25 +112,23 @@ async def process_urls(
     concurrency: int = 5,
     timeout: int = 30,
 ) -> list[dict]:
-    """Process a list of URLs concurrently and return a list of result records.
+    """Process multiple URLs concurrently.
 
-    Each record contains: url, filename, tool, success, quality, error, markdown,
-    timestamp. Already-processed URLs (present in *jsonl_path*) are skipped
-    unless *force* is True. Skipped URLs are included in the output with their
-    existing record data.
+    Manages a queue of URLs, runs them through the extraction toolchain, and outputs progress.
+    Reads existing JSONL reports to skip previously processed URLs unless forced.
 
     Args:
-        urls: URLs to convert.
-        jsonl_path: Path to existing JSONL report (for skip detection). None to skip nothing.
-        proxy_url: Optional proxy URL.
-        tool: Starting tool number, or None for default cascade.
-        force: Re-process URLs even if already in the report.
-        minify: Article-only extraction via readability/pruning filter.
-        concurrency: Maximum number of concurrent conversions.
-        timeout: Per-tool timeout in seconds.
+        urls: List of URLs to convert.
+        jsonl_path: Path to the JSONL report file for skip detection and logging.
+        proxy_url: Optional proxy string.
+        tool: Starting tool ID (1-9) or None for the default cascade.
+        force: If True, ignores existing records and re-processes all URLs.
+        minify: If True, applies article-only extraction filters.
+        concurrency: Maximum number of simultaneous URL processing tasks.
+        timeout: Time limit in seconds per tool attempt.
 
     Returns:
-        List of result record dicts (one per URL, in input order).
+        List of result dictionaries, matching the input order of URLs.
     """
     existing = {} if force or jsonl_path is None else read_jsonl_report(jsonl_path)
     to_process = {u for u in urls if u not in existing}
@@ -184,7 +181,12 @@ async def process_urls(
 
 
 def _write_md_files(records: list[dict], output_dir: Path) -> None:
-    """Write individual .md files for each record with markdown content."""
+    """Write individual Markdown files for successful extractions.
+    
+    Args:
+        records: List of result records containing the extracted 'markdown'.
+        output_dir: Destination directory.
+    """
     for rec in records:
         if rec.get("markdown"):
             filepath = output_dir / rec["filename"]
@@ -195,7 +197,14 @@ def _write_md_files(records: list[dict], output_dir: Path) -> None:
 
 
 def _write_combined_md(records: list[dict], output_dir: Path) -> None:
-    """Write all results into a single combined.md file with HR + H1 URL separators."""
+    """Merge all extracted Markdown content into a single file.
+    
+    Creates 'combined.md' in the output directory, separating articles with a horizontal rule and the URL.
+    
+    Args:
+        records: List of result records.
+        output_dir: Destination directory.
+    """
     parts: list[str] = []
     for rec in records:
         md = rec.get("markdown", "")
@@ -211,7 +220,13 @@ def _write_combined_md(records: list[dict], output_dir: Path) -> None:
 
 
 def _write_jsonl_report(records: list[dict], jsonl_path: Path, include_markdown: bool = False) -> None:
-    """Write records to a JSONL report file."""
+    """Save the operation summary to a JSONL file.
+    
+    Args:
+        records: List of result records.
+        jsonl_path: Path to the target JSONL file.
+        include_markdown: If False, strips the heavy 'markdown' payload before saving to save space.
+    """
     for rec in records:
         out = dict(rec)
         if not include_markdown:
@@ -220,7 +235,10 @@ def _write_jsonl_report(records: list[dict], jsonl_path: Path, include_markdown:
 
 
 def _emit_jsonl_stdout(records: list[dict]) -> None:
-    """Emit records as JSONL to stdout (includes markdown)."""
+    """Print the complete records (including markdown content) to standard output.
+    
+    Useful for piping the results to other CLI tools.
+    """
     for rec in records:
         sys.stdout.write(json.dumps(rec, ensure_ascii=False) + "\n")
     sys.stdout.flush()
@@ -241,32 +259,34 @@ def run_conversion(
     timeout: int = 30,
     verbose: bool = False,
 ) -> list[dict]:
-    """Convert URLs to Markdown and optionally write output files.
+    """Execute the full conversion workflow.
 
-    This is the main Python API entry point. Without *format*, it processes
-    URLs and returns a list of result records without writing any files.
-    With *format*, it also writes output in the specified mode.
+    Main entry point for both the CLI and external Python scripts. 
+    It parses inputs, manages the workspace (cleaning old files if requested), 
+    runs the concurrent extraction, and dispatches the formatting and file writing logic.
 
     Args:
-        urls: List of HTTP(S) URLs to convert.
-        output_dir: Directory for output files (created if needed).
-        jsonl_path: Path to JSONL report file. Defaults to ``output_dir/_url2md.jsonl``.
-        format: Output format. None=no file output (return only), "md"=one .md per URL + JSONL,
-                "all"=combined single .md + JSONL, "json"=JSONL with markdown content,
-                "-"=JSONL to stdout (no files).
-        proxy: Whether to use the Webshare proxy (requires WEBSHARE_* env vars).
-        tool: Starting tool number (1-9), or None for default cascade.
-        force: Re-process URLs even if already in the JSONL report.
-        minify: Article-only extraction via readability/pruning filter.
-        clean: Delete the existing JSONL report before processing.
-        clean_all: Delete the JSONL report and all .md files listed in it.
-        concurrency: Maximum number of concurrent URL conversions.
-        timeout: Per-tool timeout in seconds.
-        verbose: Enable debug-level logging.
+        urls: List of HTTP(S) URLs to process.
+        output_dir: Target directory for saved files. Created if missing.
+        jsonl_path: Path to the JSONL report file. Defaults to `output_dir/_url2md.jsonl`.
+        format: Determines the output structure. 
+            "md" saves one `.md` file per URL. 
+            "all" creates a single `combined.md`. 
+            "json" writes the full payload (with markdown) to the report.
+            "-" dumps JSONL to stdout.
+            None skips file writing entirely.
+        proxy: Enable Webshare proxy (needs WEBSHARE_* env vars).
+        tool: Starting tool ID (1-9) or None for default behavior.
+        force: Process URLs even if they exist in the report.
+        minify: Apply article-focused extraction filters.
+        clean: Delete the existing JSONL report before running.
+        clean_all: Delete the existing report AND any `.md` files listed inside it.
+        concurrency: Max simultaneous extractions.
+        timeout: Seconds to wait per tool attempt.
+        verbose: Set log level to DEBUG instead of WARNING.
 
     Returns:
-        List of result record dicts. Each has: url, filename, tool, success,
-        quality, error, markdown, timestamp.
+        A list of dictionaries representing the extraction results.
     """
     setup_logging(verbose)
     console = Console(stderr=True)

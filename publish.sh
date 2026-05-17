@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # this_file: publish.sh
-# Publish url22md: install, clean, bump version, build, upload to PyPI.
+# Publish url22md: build, install, bump version, and upload to PyPI.
 set -euo pipefail
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-echo "==> Installing package (editable)..."
-uv pip install --system --upgrade -e .
+echo "==> Running build..."
+bash "$SCRIPT_DIR/build.sh"
 
-echo "==> Cleaning previous builds..."
-uvx hatch clean
+echo "==> Running install..."
+bash "$SCRIPT_DIR/install.sh"
 
 echo "==> Bumping version via gitnextver..."
-gitnextver
+uvx gitnextver@latest
 
 echo "==> Building sdist + wheel..."
 uvx hatch build

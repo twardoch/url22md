@@ -23,33 +23,36 @@ def cli(
     Timeout: int = 30,
     verbose: bool = False,
 ) -> None:
-    """Convert HTTP(S) URLs to Markdown files.
+    """Convert HTTP(S) URLs to Markdown.
 
     Args:
-        url: Single URL to convert.
-        Urls_path: Path to file with one URL per line.
-        format: Output format: "md"=one .md per URL, "all"=single combined .md,
-                "json"=JSONL with markdown content, "-"=JSONL to stdout.
-        output_dir: Directory for output files (default: current dir).
-        jsonl: Path for JSONL progress report (default: output_dir/_url2md.jsonl).
-        tool: Start from tool (1=trafilatura, 2=trafilatura-strict, 3=readability,
-              4=readability-strict, 5=playwright, 6=firecrawl, 7=jina, 8=crawl4ai,
-              9=crawl4ai-fit).
-        proxy: Use Webshare proxy (requires WEBSHARE_* env vars).
-        Force: Re-process URLs even if already in the JSONL report.
-        minify: Article-only extraction: readability for tools 1-4, pruning for crawl4ai.
-        clean: Delete existing report file before running.
-        Clean_all: Delete existing report and output files before running.
-        Jobs: Max concurrent URL processing (default: 5).
-        Timeout: Timeout per URL in seconds (default: 30).
-        verbose: Enable debug logging.
+        url: Convert a single URL.
+        Urls_path: Path to a text file containing one URL per line.
+        format: Set output format: 
+                "md" = individual .md files (default).
+                "all" = a single combined .md file.
+                "json" = JSONL file containing the markdown payload.
+                "-" = emit JSONL to stdout.
+        output_dir: Directory where files will be saved (default: current directory).
+        jsonl: Path for the JSONL progress tracker (default: output_dir/_url2md.jsonl).
+        tool: Force a specific starting extraction tool (1-9).
+              1=trafilatura, 2=trafilatura-strict, 3=readability, 4=readability-strict,
+              5=playwright, 6=firecrawl, 7=jina, 8=crawl4ai, 9=crawl4ai-fit.
+        proxy: Route traffic through a Webshare proxy (requires WEBSHARE_* env variables).
+        Force: Re-run URLs even if they are already recorded as complete in the JSONL report.
+        minify: Apply article-only filters to strip navigation and boilerplate content.
+        clean: Delete the existing JSONL report before running.
+        Clean_all: Delete the existing report AND all associated output files before running.
+        Jobs: Maximum number of URLs to process concurrently (default: 5).
+        Timeout: Seconds to wait before aborting a single tool attempt (default: 30).
+        verbose: Print detailed debug logging.
     """
     setup_logging(verbose)
 
     urls = read_urls_input(url, Urls_path)
     if not urls:
         from rich.console import Console
-        Console().print("[red]No URLs provided. Use --url, --Urls_path, or pipe via stdin.[/red]")
+        Console().print("[red]No URLs provided. Provide --url, --Urls_path, or pipe text via stdin.[/red]")
         raise SystemExit(1)
 
     run_conversion(

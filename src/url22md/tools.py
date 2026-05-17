@@ -24,7 +24,14 @@ from loguru import logger
 
 
 def _readability_to_markdown(html_content: str) -> str:
-    """Pass HTML through readability-lxml for article extraction, then markdownify."""
+    """Pass HTML through readability-lxml for article extraction, then convert to Markdown via markdownify.
+    
+    Args:
+        html_content: Raw HTML string.
+        
+    Returns:
+        Clean Markdown string focusing on the main article content.
+    """
     from markdownify import markdownify as html2md
     from readability import Document
 
@@ -39,7 +46,15 @@ def _readability_to_markdown(html_content: str) -> str:
 
 @dataclass
 class ToolResult:
-    """Result returned by every extraction tool."""
+    """Result returned by every extraction tool.
+    
+    Attributes:
+        markdown: Extracted text in Markdown format.
+        tool_name: Identifier of the tool used (e.g., 'trafilatura').
+        success: True if extraction completed without fatal errors.
+        error: Error message if success is False.
+        quality_score: Score between 0.0 (bad) and 1.0 (good) indicating prose quality.
+    """
 
     markdown: str
     tool_name: str
@@ -52,7 +67,15 @@ def assess_quality(markdown: str) -> float:
     """Score markdown quality from 0.0 to 1.0 based on prose content, not boilerplate.
 
     Detects and penalises CSS, JS config, and other non-prose content that tools
-    sometimes return instead of actual article text.
+    sometimes return instead of actual article text. Look for words, sentences, 
+    headings, and paragraphs to boost the score. Look for HTML tags, curly braces, 
+    and UI class names to drop the score.
+    
+    Args:
+        markdown: The text to evaluate.
+        
+    Returns:
+        A float score bounded between 0.0 and 1.0.
     """
     if not markdown or not markdown.strip():
         return 0.0
@@ -160,10 +183,20 @@ def assess_quality(markdown: str) -> float:
 async def extract_with_trafilatura(
     url: str, proxy_url: str | None = None, timeout: int = 30, minify: bool = False,
 ) -> ToolResult:
-    """Extract markdown using trafilatura (fast, no JS rendering).
-
-    When *minify* is True, trafilatura fetches the HTML and then readability-lxml
-    + markdownify handle the conversion (article-only extraction).
+    """Extract markdown using trafilatura.
+    
+    Fast and requires no JS rendering.
+    When `minify` is True, trafilatura fetches the HTML and then readability-lxml + markdownify 
+    handle the conversion to strip non-article content.
+    
+    Args:
+        url: Target URL.
+        proxy_url: Optional proxy format string.
+        timeout: Fetch timeout limit.
+        minify: Apply readability extraction if True.
+        
+    Returns:
+        A ToolResult object containing extracted markdown and quality metrics.
     """
     tool = "trafilatura"
     try:
@@ -222,7 +255,18 @@ async def extract_with_trafilatura(
 async def extract_with_readability(
     url: str, proxy_url: str | None = None, timeout: int = 30, **kwargs,
 ) -> ToolResult:
-    """Extract markdown using readability-lxml + markdownify (article-focused)."""
+    """Extract markdown using readability-lxml + markdownify.
+    
+    Article-focused extraction. Good at pulling out core article text while dropping navs and sidebars.
+    
+    Args:
+        url: Target URL.
+        proxy_url: Optional proxy format string.
+        timeout: Fetch timeout limit.
+        
+    Returns:
+        A ToolResult object containing extracted markdown and quality metrics.
+    """
     tool = "readability"
     try:
         import httpx
@@ -256,8 +300,17 @@ async def extract_with_playwright(
 ) -> ToolResult:
     """Extract markdown using Playwright (real browser) + markdownify.
 
-    When *minify* is True, the HTML is passed through readability-lxml for
-    article extraction before markdownify conversion.
+    Boots a headless Chromium browser to render JS-heavy pages, grabs the HTML, 
+    and converts to Markdown. When `minify` is True, HTML passes through readability-lxml first.
+    
+    Args:
+        url: Target URL.
+        proxy_url: Optional proxy format string.
+        timeout: Fetch timeout limit.
+        minify: Apply readability extraction if True.
+        
+    Returns:
+        A ToolResult object containing extracted markdown and quality metrics.
     """
     tool = "playwright"
     try:
@@ -303,8 +356,16 @@ async def extract_with_crawl4ai(
 ) -> ToolResult:
     """Extract markdown using crawl4ai with anti-bot features.
 
-    Uses stealth mode, magic overlay removal, user simulation, and consent
-    popup removal for resilient extraction.
+    Built for hostile DOMs. Uses stealth mode, magic overlay removal, user simulation, 
+    and consent popup removal to bust through scrape-blockers.
+    
+    Args:
+        url: Target URL.
+        proxy_url: Optional proxy format string.
+        timeout: Fetch timeout limit.
+        
+    Returns:
+        A ToolResult object containing extracted markdown and quality metrics.
     """
     tool = "crawl4ai"
     try:
@@ -356,6 +417,14 @@ async def extract_with_crawl4ai_fit(
 
     Like extract_with_crawl4ai but applies content filtering to strip
     boilerplate, returning the cleaned fit_markdown.
+    
+    Args:
+        url: Target URL.
+        proxy_url: Optional proxy format string.
+        timeout: Fetch timeout limit.
+        
+    Returns:
+        A ToolResult object containing extracted markdown and quality metrics.
     """
     tool = "crawl4ai-fit"
     try:
@@ -419,7 +488,18 @@ async def extract_with_crawl4ai_fit(
 async def extract_with_firecrawl(
     url: str, proxy_url: str | None = None, timeout: int = 30, **kwargs,
 ) -> ToolResult:
-    """Extract markdown using the Firecrawl cloud API (requires FIRECRAWL_API_KEY)."""
+    """Extract markdown using the Firecrawl cloud API.
+    
+    Requires FIRECRAWL_API_KEY environment variable. Defers scraping to Firecrawl's hosted service.
+    
+    Args:
+        url: Target URL.
+        proxy_url: Ignored (Firecrawl handles its own proxying).
+        timeout: Ignored (Firecrawl handles its own timeouts).
+        
+    Returns:
+        A ToolResult object containing extracted markdown and quality metrics.
+    """
     tool = "firecrawl"
     try:
         import os
@@ -460,7 +540,18 @@ async def extract_with_firecrawl(
 async def extract_with_jina(
     url: str, proxy_url: str | None = None, timeout: int = 30, **kwargs,
 ) -> ToolResult:
-    """Extract markdown using the Jina Reader API (requires JINA_API_KEY)."""
+    """Extract markdown using the Jina Reader API.
+    
+    Requires JINA_API_KEY environment variable. Makes an HTTP request to `https://r.jina.ai/{url}`.
+    
+    Args:
+        url: Target URL.
+        proxy_url: Optional proxy format string.
+        timeout: Fetch timeout limit.
+        
+    Returns:
+        A ToolResult object containing extracted markdown and quality metrics.
+    """
     tool = "jina"
     try:
         import os
