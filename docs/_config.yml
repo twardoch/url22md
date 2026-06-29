@@ -1,0 +1,18 @@
+title: url22md
+description: Convert HTTP(S) URLs to clean Markdown using a multi-tool fallback cascade.
+remote_theme: just-the-docs/just-the-docs
+url: https://twardoch.github.io/url22md
+
+color_scheme: light
+
+aux_links:
+  "GitHub":
+    - https://github.com/twardoch/url22md
+  "PyPI":
+    - https://pypi.org/project/url22md/
+
+footer_content: "url22md is released under the Apache 2.0 license."
+
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag

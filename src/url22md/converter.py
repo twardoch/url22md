@@ -55,7 +55,7 @@ async def convert_single_url(
 
         logger.debug("Trying tool {} ({}) for {}", current_tid, tool_name, url)
         try:
-            result = await tool_fn(url=url, proxy_url=proxy_url, timeout=timeout, minify=minify)
+            result = await tool_fn(url=url, proxy_url=proxy_url, timeout=timeout)
         except Exception as exc:
             logger.debug("Tool {} ({}) raised {}: {}", current_tid, tool_name, type(exc).__name__, exc)
             result = ToolResult(
@@ -104,45 +104,52 @@ async def convert_single_url(
 
 async def process_urls(
     urls: list[str],
-    jsonl_path: Path | None,
+    output_dir: Path,
+    jsonl_path: Path | None = None,
     proxy_url: str | None = None,
     tool: int | None = None,
     force: bool = False,
-    minify: bool = False,
     concurrency: int = 5,
     timeout: int = 30,
-) -> list[dict]:
-    """Process multiple URLs concurrently.
+) -> dict[str, int]:
+    """Process multiple URLs concurrently, writing MD files and a JSONL report.
 
-    Manages a queue of URLs, runs them through the extraction toolchain, and outputs progress.
     Reads existing JSONL reports to skip previously processed URLs unless forced.
+    Writes one .md file per successful extraction and appends one JSONL record per URL.
 
     Args:
         urls: List of URLs to convert.
+        output_dir: Directory to write individual .md files.
         jsonl_path: Path to the JSONL report file for skip detection and logging.
         proxy_url: Optional proxy string.
-        tool: Starting tool ID (1-9) or None for the default cascade.
+        tool: Starting tool ID or None for the default cascade.
         force: If True, ignores existing records and re-processes all URLs.
-        minify: If True, applies article-only extraction filters.
         concurrency: Maximum number of simultaneous URL processing tasks.
         timeout: Time limit in seconds per tool attempt.
 
     Returns:
-        List of result dictionaries, matching the input order of URLs.
+        Summary dict with keys: total, processed, skipped, succeeded, failed.
     """
+    if not urls:
+        return {"total": 0, "processed": 0, "skipped": 0, "succeeded": 0, "failed": 0}
+
     existing = {} if force or jsonl_path is None else read_jsonl_report(jsonl_path)
-    to_process = {u for u in urls if u not in existing}
+    to_process = [u for u in urls if u not in existing]
     skipped_count = len(urls) - len(to_process)
 
     if skipped_count:
         logger.info("Skipping {} already-processed URLs", skipped_count)
 
-    results: dict[str, dict] = {}
+    processed = 0
+    succeeded = 0
+    failed = 0
     sem = asyncio.Semaphore(concurrency)
+    lock = asyncio.Lock()
 
-    async def _handle(url: str, progress: Progress, task_id) -> None:
+    async def _handle(url: str) -> None:
+        nonlocal processed, succeeded, failed
         async with sem:
-            result = await convert_single_url(url, proxy_url, tool=tool, timeout=timeout, minify=minify)
+            result = await convert_single_url(url, proxy_url, tool=tool, timeout=timeout)
             record = {
                 "url": url,
                 "filename": url2filename(url) + ".md",
@@ -150,34 +157,35 @@ async def process_urls(
                 "success": result.success,
                 "quality": result.quality_score,
                 "error": result.error,
-                "markdown": result.markdown,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
-            results[url] = record
-            progress.update(task_id, advance=1)
+            # Write individual MD file for successful extractions
+            if result.success and result.markdown:
+                filepath = output_dir / record["filename"]
+                try:
+                    filepath.write_text(result.markdown, encoding="utf-8")
+                except OSError as exc:
+                    logger.error("Failed to write {}: {}", filepath, exc)
+            # Append JSONL record (without heavy markdown payload)
+            if jsonl_path is not None:
+                append_jsonl_record(jsonl_path, record)
+            async with lock:
+                processed += 1
+                if result.success:
+                    succeeded += 1
+                else:
+                    failed += 1
             logger.info("Processed: {} ({}, quality {:.2f})", url, result.tool_name, result.quality_score)
 
-    if to_process:
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-        ) as progress:
-            task_id = progress.add_task("Converting URLs", total=len(to_process))
-            tasks = [_handle(url, progress, task_id) for url in urls if url in to_process]
-            await asyncio.gather(*tasks)
+    await asyncio.gather(*[_handle(url) for url in to_process])
 
-    # Build ordered output: skipped URLs get their existing record, processed get new record
-    ordered: list[dict] = []
-    for url in urls:
-        if url in results:
-            ordered.append(results[url])
-        elif url in existing:
-            rec = dict(existing[url])
-            rec.setdefault("markdown", "")
-            ordered.append(rec)
-    return ordered
+    return {
+        "total": len(urls),
+        "processed": processed,
+        "skipped": skipped_count,
+        "succeeded": succeeded,
+        "failed": failed,
+    }
 
 
 def _write_md_files(records: list[dict], output_dir: Path) -> None:
@@ -258,35 +266,34 @@ def run_conversion(
     concurrency: int = 5,
     timeout: int = 30,
     verbose: bool = False,
-) -> list[dict]:
+) -> dict[str, int]:
     """Execute the full conversion workflow.
 
-    Main entry point for both the CLI and external Python scripts. 
-    It parses inputs, manages the workspace (cleaning old files if requested), 
-    runs the concurrent extraction, and dispatches the formatting and file writing logic.
+    Main entry point for both the CLI and external Python scripts.
+    Manages the workspace (cleaning old files if requested), runs concurrent
+    extraction via process_urls, and returns a summary dict.
 
     Args:
         urls: List of HTTP(S) URLs to process.
         output_dir: Target directory for saved files. Created if missing.
-        jsonl_path: Path to the JSONL report file. Defaults to `output_dir/_url2md.jsonl`.
-        format: Determines the output structure. 
-            "md" saves one `.md` file per URL. 
-            "all" creates a single `combined.md`. 
-            "json" writes the full payload (with markdown) to the report.
-            "-" dumps JSONL to stdout.
-            None skips file writing entirely.
+        jsonl_path: Path to the JSONL report file. Defaults to ``output_dir/_url22md.jsonl``.
+        format: Optional output modifier.
+            ``"all"`` additionally creates a single ``combined.md``.
+            ``"-"`` dumps JSONL to stdout instead of writing files.
+            Other values are accepted but have no additional effect beyond the
+            per-URL .md files and JSONL record that process_urls always writes.
         proxy: Enable Webshare proxy (needs WEBSHARE_* env vars).
-        tool: Starting tool ID (1-9) or None for default behavior.
+        tool: Starting tool ID (1-6) or None for default cascade.
         force: Process URLs even if they exist in the report.
-        minify: Apply article-focused extraction filters.
+        minify: Kept for CLI compatibility; passed through but not used in cascade.
         clean: Delete the existing JSONL report before running.
-        clean_all: Delete the existing report AND any `.md` files listed inside it.
+        clean_all: Delete the existing report AND any ``.md`` files listed inside it.
         concurrency: Max simultaneous extractions.
         timeout: Seconds to wait per tool attempt.
         verbose: Set log level to DEBUG instead of WARNING.
 
     Returns:
-        A list of dictionaries representing the extraction results.
+        Summary dict with keys: total, processed, skipped, succeeded, failed.
     """
     setup_logging(verbose)
     console = Console(stderr=True)
@@ -294,7 +301,7 @@ def run_conversion(
     out = Path(output_dir).resolve()
     out.mkdir(parents=True, exist_ok=True)
 
-    report = Path(jsonl_path).resolve() if jsonl_path else out / "_url2md.jsonl"
+    report = Path(jsonl_path).resolve() if jsonl_path else out / "_url22md.jsonl"
 
     # --clean_all: remove report and all .md files referenced in it.
     if clean_all:
@@ -316,46 +323,55 @@ def run_conversion(
             report.unlink()
             logger.info("Deleted report file {}", report)
 
+    if not urls:
+        return {"total": 0, "processed": 0, "skipped": 0, "succeeded": 0, "failed": 0}
+
     proxy_url = build_proxy_url(proxy)
 
-    if not urls:
-        console.print("[yellow]No URLs to process.[/yellow]")
-        return []
-
-    records = asyncio.run(
+    summary = asyncio.run(
         process_urls(
             urls=urls,
+            output_dir=out,
             jsonl_path=report if format != "-" else None,
             proxy_url=proxy_url,
             tool=tool,
             force=force,
-            minify=minify,
             concurrency=concurrency,
             timeout=timeout,
         )
     )
 
-    # Write output based on format
-    if format == "md":
-        _write_md_files(records, out)
-        _write_jsonl_report(records, report, include_markdown=False)
-    elif format == "all":
-        _write_combined_md(records, out)
-        _write_jsonl_report(records, report, include_markdown=False)
-    elif format == "json":
-        _write_jsonl_report(records, report, include_markdown=True)
+    # Additional output modes
+    if format == "all":
+        # Build combined.md from the written .md files
+        parts: list[str] = []
+        for url in urls:
+            fname = url2filename(url) + ".md"
+            md_file = out / fname
+            if md_file.exists():
+                parts.append(f"---\n\n# {url}\n\n{md_file.read_text(encoding='utf-8')}")
+        if parts:
+            combined = "\n\n".join(parts)
+            try:
+                (out / "combined.md").write_text(combined, encoding="utf-8")
+            except OSError as exc:
+                logger.error("Failed to write combined.md: {}", exc)
     elif format == "-":
-        _emit_jsonl_stdout(records)
+        # Emit records to stdout
+        if report.exists():
+            for line in report.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line:
+                    sys.stdout.write(line + "\n")
+            sys.stdout.flush()
 
-    # Print summary to stderr (skip for stdout mode)
-    succeeded = sum(1 for r in records if r.get("success"))
-    failed = sum(1 for r in records if not r.get("success"))
-    processed = sum(1 for r in records if "timestamp" in r)
+    # Print summary to stderr
     console.print()
     console.print("[bold]Conversion complete[/bold]")
-    console.print(f"  Total URLs:  {len(urls)}")
-    console.print(f"  Processed:   {processed}")
-    console.print(f"  Succeeded:   {succeeded}")
-    console.print(f"  Failed:      {failed}")
+    console.print(f"  Total URLs:  {summary['total']}")
+    console.print(f"  Processed:   {summary['processed']}")
+    console.print(f"  Skipped:     {summary['skipped']}")
+    console.print(f"  Succeeded:   {summary['succeeded']}")
+    console.print(f"  Failed:      {summary['failed']}")
 
-    return records
+    return summary

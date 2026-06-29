@@ -101,8 +101,8 @@ def assess_quality(markdown: str) -> float:
     elif word_count >= 30:
         score += 0.15
     else:
-        # Very few prose words — almost certainly garbage
-        return 0.0
+        # Very few prose words — give a minimal non-zero score based on length
+        score += 0.05
 
     # --- Sentence detection (periods, question marks, exclamation marks) ---
     sentences = len(re.findall(r"[.!?]\s", prose_text))
@@ -152,9 +152,11 @@ def assess_quality(markdown: str) -> float:
         score -= 0.1
 
     # Repetitive short lines (nav menus, link lists, layout fragments)
+    # Require at least 3 lines before applying this penalty — a single sentence
+    # should not be treated as nav-menu boilerplate.
     lines = [line.strip() for line in text.split("\n") if line.strip()]
     short_lines = sum(1 for line in lines if len(line) < 30)
-    if lines and short_lines / len(lines) > 0.7:
+    if len(lines) > 2 and short_lines / len(lines) > 0.7:
         score -= 0.2
 
     # Low prose-to-total ratio (layout-heavy extraction)
@@ -592,27 +594,21 @@ async def extract_with_jina(
 
 TOOLS: dict[int, tuple[str, Callable]] = {
     1: ("trafilatura", extract_with_trafilatura),
-    2: ("trafilatura", extract_with_trafilatura),
-    3: ("readability", extract_with_readability),
-    4: ("readability", extract_with_readability),
-    5: ("playwright", extract_with_playwright),
-    6: ("firecrawl", extract_with_firecrawl),
-    7: ("jina", extract_with_jina),
-    8: ("crawl4ai", extract_with_crawl4ai),
-    9: ("crawl4ai-fit", extract_with_crawl4ai_fit),
+    2: ("crawl4ai", extract_with_crawl4ai),
+    3: ("playwright", extract_with_playwright),
+    4: ("firecrawl", extract_with_firecrawl),
+    5: ("jina", extract_with_jina),
+    6: ("readability", extract_with_readability),
 }
 
 # Directed fallback: tool_id -> next tool_id on failure/low quality (None = stop)
 FALLBACKS: dict[int, int | None] = {
-    1: 5,     # trafilatura → playwright
-    2: None,  # trafilatura strict (no fallback)
-    3: 5,     # readability → playwright
-    4: None,  # readability strict (no fallback)
-    5: 6,     # playwright → firecrawl
-    6: 7,     # firecrawl → jina
-    7: 2,     # jina → trafilatura strict (terminal)
-    8: 6,     # crawl4ai → firecrawl
-    9: 5,     # crawl4ai-fit → playwright
+    1: 2,     # trafilatura → crawl4ai
+    2: 3,     # crawl4ai → playwright
+    3: 4,     # playwright → firecrawl
+    4: 5,     # firecrawl → jina
+    5: 6,     # jina → readability
+    6: None,  # readability (no fallback)
 }
 
 QUALITY_THRESHOLD = 0.5  # Minimum quality to accept result without fallback

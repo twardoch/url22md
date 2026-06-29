@@ -1,6 +1,6 @@
 # url22md
 
-Convert HTTP(S) URLs to clean Markdown files. Uses seven extraction tools with directed fallback chains, scores quality, and keeps the best result. Handles hundreds of URLs concurrently, tracks progress in a crash-safe JSONL report, and skips already-processed URLs on restart.
+Convert HTTP(S) URLs to clean Markdown files. Uses six extraction engines with directed fallback chains, scores quality, and keeps the best result. Handles hundreds of URLs concurrently, tracks progress in a crash-safe JSONL report, and skips already-processed URLs on restart.
 
 ## Install
 
@@ -45,19 +45,16 @@ url22md --url "https://spa-heavy-site.com" --tool 3
 
 url22md tries extraction tools following a directed fallback chain. Each tool has a specific next-tool on failure (not a simple linear sequence). After each attempt it scores the Markdown on prose word count, sentence structure, and penalises CSS/JS boilerplate. The first result scoring above the quality threshold (0.5) is accepted. If nothing meets the threshold, the best result is kept anyway.
 
-| # | Tool | JS | Speed | Fallback | Needs |
-|---|------|----|-------|----------|-------|
-| 1 | [trafilatura](https://trafilatura.readthedocs.io/) | No | Fast | → 5 | nothing |
-| 2 | trafilatura (strict) | No | Fast | none | nothing |
-| 3 | [readability-lxml](https://github.com/buriy/python-readability) + [markdownify](https://github.com/matthewwithanm/python-markdownify) | No | Fast | → 5 | nothing |
-| 4 | readability + markdownify (strict) | No | Fast | none | nothing |
-| 5 | [playwright](https://playwright.dev/python/) + markdownify | Yes | Good | → 6 | `playwright install chromium` |
-| 6 | [firecrawl](https://firecrawl.dev/) | Yes | Good | → 7 | `FIRECRAWL_API_KEY` |
-| 7 | [Jina Reader](https://jina.ai/reader/) | Yes | Fast | → 2 | `JINA_API_KEY` |
-| 8 | [crawl4ai](https://docs.crawl4ai.com/) | Yes | Good | → 6 | `crawl4ai-setup` |
-| 9 | crawl4ai (fit) | Yes | Good | → 5 | `crawl4ai-setup` |
+| # | Tool | JS | Fallback | Needs |
+|---|------|----|----------|-------|
+| 1 | [trafilatura](https://trafilatura.readthedocs.io/) | No | → 2 | nothing |
+| 2 | [crawl4ai](https://docs.crawl4ai.com/) (anti-bot) | Yes | → 3 | `crawl4ai-setup` |
+| 3 | [playwright](https://playwright.dev/python/) + markdownify | Yes | → 4 | `playwright install chromium` |
+| 4 | [firecrawl](https://firecrawl.dev/) | Yes (cloud) | → 5 | `FIRECRAWL_API_KEY` |
+| 5 | [Jina Reader](https://jina.ai/reader/) | Yes (cloud) | → 6 | `JINA_API_KEY` |
+| 6 | [readability-lxml](https://github.com/buriy/python-readability) + markdownify | No | — | nothing |
 
-Tools 1-5, 8-9 run locally. Tools 6 and 7 call cloud APIs and require API keys. Tool 8 uses crawl4ai with stealth mode and anti-bot features (magic, user simulation, navigator override). Tool 9 adds a PruningContentFilter for article-only fit_markdown output. The default cascade starting from tool 1 follows: 1 → 5 → 6 → 7 → 2 (stop).
+Tools 1 and 6 run locally with no extra setup. Tools 2 and 3 need a local browser install. Tools 4 and 5 call cloud APIs and require API keys. The default cascade follows: 1 → 2 → 3 → 4 → 5 → 6.
 
 ## CLI reference
 
@@ -79,7 +76,7 @@ url22md [flags]
 |------|---------|-------------|
 | `--format FMT` | `md` | Output format (see below) |
 | `--output_dir DIR` | `.` | Directory for output files |
-| `--jsonl PATH` | `DIR/_url2md.jsonl` | JSONL progress report path |
+| `--jsonl PATH` | `DIR/_url22md.jsonl` | JSONL progress report path |
 
 **Output formats**:
 
@@ -87,14 +84,13 @@ url22md [flags]
 |--------|-----------|
 | `md` | One `.md` file per URL + JSONL report (default) |
 | `all` | All results in a single `combined.md` (HR + H1 URL separators) + JSONL report |
-| `json` | JSONL report with `markdown` content included (no `.md` files) |
-| `-` | JSONL with `markdown` to stdout (no files written) |
+| `-` | JSONL records to stdout (no files written) |
 
 **Extraction control**:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--tool N` | 1 (cascade) | Start from tool N (1-9), follows fallback chain |
+| `--tool N` | 1 (cascade) | Start from tool N (1-6), follows fallback chain |
 | `--proxy` | off | Route through Webshare proxy |
 | `--Jobs N` | 5 | Max parallel URL conversions |
 | `--Timeout N` | 30 | Per-tool timeout in seconds |
@@ -104,7 +100,6 @@ url22md [flags]
 | Flag | Description |
 |------|-------------|
 | `--Force` | Re-process URLs even if already in the JSONL report |
-| `--minify` | Article-only extraction: readability for tools 1-4, pruning for crawl4ai |
 | `--clean` | Delete existing JSONL report before starting |
 | `--Clean_all` | Delete report and all output files listed in it |
 | `--verbose` | Debug-level logging to stderr |
@@ -114,37 +109,26 @@ url22md [flags]
 Each record contains:
 
 ```json
-{"url": "https://example.com", "filename": "example-com.md", "tool": "trafilatura", "success": true, "quality": 0.7, "error": null, "timestamp": "2026-03-26T22:15:00+00:00"}
+{"url": "https://example.com", "filename": "example-com.md", "tool": "trafilatura",
+ "success": true, "quality": 0.7, "error": null, "timestamp": "2026-03-26T22:15:00+00:00"}
 ```
 
-With `--format json` or `--format -`, a `"markdown"` key with the full content is included. On the next run, URLs already in the report are skipped. Use `--clean` to start fresh.
+On the next run, URLs already in the report are skipped. Use `--clean` to start fresh or `--Force` to re-process.
 
 ## Python API
 
-`run_conversion()` returns a list of result records. Without `format`, no files are written:
+`run_conversion()` returns a summary dict and writes `.md` files to `output_dir`:
 
 ```python
 from url22md import run_conversion
 
-records = run_conversion(
+summary = run_conversion(
     urls=["https://example.com", "https://docs.python.org/3/"],
-    concurrency=10,
-)
-for rec in records:
-    print(rec["url"], rec["tool"], rec["quality"])
-    print(rec["markdown"][:200])
-```
-
-Each record dict has: `url`, `filename`, `tool`, `success`, `quality`, `error`, `markdown`, `timestamp`.
-
-To also write files, pass `format`:
-
-```python
-records = run_conversion(
-    urls=["https://example.com"],
     output_dir="./output",
-    format="md",       # writes individual .md files + JSONL report
+    concurrency=5,
 )
+print(summary)
+# {'total': 2, 'processed': 2, 'skipped': 0, 'succeeded': 2, 'failed': 0}
 ```
 
 Lower-level async access:
@@ -182,7 +166,7 @@ Quality scoring:
 from url22md import assess_quality
 
 score = assess_quality("# Title\n\nA paragraph.\n\nAnother paragraph.")
-print(score)  # 0.6
+print(score)  # ~0.6
 ```
 
 ## Proxy support
@@ -217,9 +201,9 @@ These tools are only attempted when their API key is present. Without them, the 
 
 ```
 output_dir/
-  example-com.md                     # Markdown content
-  docs-python-org-3.md               # Markdown content
-  _url2md.jsonl                      # Progress report
+  example-com.md          # Markdown content
+  docs-python-org-3.md    # Markdown content
+  _url22md.jsonl          # Progress report
 ```
 
 Filenames are generated from URLs using `slugify` + `pathvalidate`, producing filesystem-safe names like `example-com-article-id-42.md`.
@@ -238,11 +222,11 @@ uvx hatch test
 # Lint
 uvx ruff check src/url22md/ tests/
 
+# Type check
+uvx mypy src/url22md/ --ignore-missing-imports
+
 # Build
 uvx hatch build
-
-# Publish
-uv publish
 ```
 
 Versioning is derived from git tags via [hatch-vcs](https://github.com/ofek/hatch-vcs). Tag `v1.2.3` produces version `1.2.3`.
