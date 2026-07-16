@@ -12,7 +12,6 @@ from url22md.utils import (
     url2filename,
 )
 
-
 # ---------------------------------------------------------------------------
 # url2filename
 # ---------------------------------------------------------------------------
@@ -69,7 +68,12 @@ def test_build_proxy_url_enabled_with_env(monkeypatch):
 
 def test_build_proxy_url_missing_env(monkeypatch):
     # Remove all Webshare env vars so they are definitely absent
-    for var in ("WEBSHARE_PROXY_USER", "WEBSHARE_PROXY_PASS", "WEBSHARE_DOMAIN_NAME", "WEBSHARE_PROXY_PORT"):
+    for var in (
+        "WEBSHARE_PROXY_USER",
+        "WEBSHARE_PROXY_PASS",
+        "WEBSHARE_DOMAIN_NAME",
+        "WEBSHARE_PROXY_PORT",
+    ):
         monkeypatch.delenv(var, raising=False)
 
     result = build_proxy_url(use_proxy=True)

@@ -14,19 +14,25 @@ from slugify import slugify
 
 def url2filename(url: str) -> str:
     """Generate a filesystem-safe filename from a URL.
-    
+
     Parses the URL to extract the domain, path, parameters, query, and fragment.
     Joins these parts and sanitizes the result to ensure it is safe to use as a file name.
-    
+
     Args:
         url: The URL string to convert.
-        
+
     Returns:
         A sanitized, slugified filename string.
     """
     urlparsed = urlparse(url)
     clean = ""
-    for part in [urlparsed.netloc, urlparsed.path, urlparsed.params, urlparsed.query, urlparsed.fragment]:
+    for part in [
+        urlparsed.netloc,
+        urlparsed.path,
+        urlparsed.params,
+        urlparsed.query,
+        urlparsed.fragment,
+    ]:
         if part:
             clean = f"{clean}-{part}"
     return sanitize_filename(slugify(clean), replacement_text="-")
@@ -34,14 +40,14 @@ def url2filename(url: str) -> str:
 
 def build_proxy_url(use_proxy: bool = False) -> str | None:
     """Build a Webshare proxy URL from environment variables.
-    
-    Checks `WEBSHARE_PROXY_USER`, `WEBSHARE_PROXY_PASS`, `WEBSHARE_DOMAIN_NAME`, 
+
+    Checks `WEBSHARE_PROXY_USER`, `WEBSHARE_PROXY_PASS`, `WEBSHARE_DOMAIN_NAME`,
     and `WEBSHARE_PROXY_PORT`.
-    
+
     Args:
         use_proxy: Flag indicating if a proxy should be constructed.
-        
-    Returns: 
+
+    Returns:
         Formatted proxy string `http://{user}:{password}@{host}:{port}` if use_proxy is True
         and all required env vars are present. Returns None otherwise.
     """
@@ -54,7 +60,9 @@ def build_proxy_url(use_proxy: bool = False) -> str | None:
     port = os.environ.get("WEBSHARE_PROXY_PORT")
 
     if not all([user, password, host, port]):
-        logger.warning("use_proxy=True but one or more WEBSHARE_* env vars are missing; skipping proxy.")
+        logger.warning(
+            "use_proxy=True but one or more WEBSHARE_* env vars are missing; skipping proxy."
+        )
         return None
 
     return f"http://{user}:{password}@{host}:{port}"
@@ -104,9 +112,9 @@ def read_jsonl_report(path: Path) -> dict[str, dict]:
 
 def append_jsonl_record(path: Path, record: dict) -> None:
     """Append a single JSON record as a line to a JSONL file, flushing immediately.
-    
+
     Creates parent directories if they don't exist.
-    
+
     Args:
         path: Path to the target JSONL file.
         record: Dictionary data to append.
@@ -121,11 +129,11 @@ def read_urls_input(url: str | None, urls_path: str | None) -> list[str]:
     """Read URLs from --url, --urls_path, or stdin.
 
     Deduplicates and strips whitespace. Filters to http/https only.
-    
+
     Args:
         url: A single URL string (optional).
         urls_path: Path to a file containing URLs, one per line (optional).
-        
+
     Returns:
         A deduplicated list of HTTP/HTTPS URLs ready for processing.
     """

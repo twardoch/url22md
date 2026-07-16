@@ -1,10 +1,12 @@
 """CLI entry point for url22md."""
 # this_file: src/url22md/__main__.py
 
-import fire
-from url22md.utils import read_urls_input, setup_logging
-from url22md.converter import run_conversion
 from pathlib import Path
+
+import fire
+
+from url22md.converter import run_conversion
+from url22md.utils import read_urls_input, setup_logging
 
 
 def cli(
@@ -28,7 +30,7 @@ def cli(
     Args:
         url: Convert a single URL.
         Urls_path: Path to a text file containing one URL per line.
-        format: Set output format: 
+        format: Set output format:
                 "md" = individual .md files (default).
                 "all" = a single combined .md file.
                 "json" = JSONL file containing the markdown payload.
@@ -52,7 +54,10 @@ def cli(
     urls = read_urls_input(url, Urls_path)
     if not urls:
         from rich.console import Console
-        Console().print("[red]No URLs provided. Provide --url, --Urls_path, or pipe text via stdin.[/red]")
+
+        Console().print(
+            "[red]No URLs provided. Provide --url, --Urls_path, or pipe text via stdin.[/red]"
+        )
         raise SystemExit(1)
 
     run_conversion(

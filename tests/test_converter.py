@@ -29,8 +29,7 @@ def run(coro):
 _GOOD_MARKDOWN = (
     "# Test Page\n\n"
     "This is a paragraph with enough content.\n\n"
-    "Another paragraph here.\n\n"
-    + "X" * 700
+    "Another paragraph here.\n\n" + "X" * 700
 )
 
 _GOOD_QUALITY = 0.8  # Above QUALITY_THRESHOLD
@@ -270,7 +269,8 @@ def test_run_conversion_clean_all_deletes_report_and_md_files(tmp_path):
 
     jsonl = tmp_path / "_url22md.jsonl"
     jsonl.write_text(
-        json.dumps({"url": "https://old.com", "success": True, "filename": "old-article.md"}) + "\n",
+        json.dumps({"url": "https://old.com", "success": True, "filename": "old-article.md"})
+        + "\n",
         encoding="utf-8",
     )
 

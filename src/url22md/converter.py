@@ -6,15 +6,20 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from loguru import logger
 from rich.console import Console
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
 
 from url22md.tools import FALLBACKS, QUALITY_THRESHOLD, TOOLS, ToolResult
-from url22md.utils import append_jsonl_record, build_proxy_url, read_jsonl_report, setup_logging, url2filename
+from url22md.utils import (
+    append_jsonl_record,
+    build_proxy_url,
+    read_jsonl_report,
+    setup_logging,
+    url2filename,
+)
 
 
 async def convert_single_url(
@@ -26,7 +31,7 @@ async def convert_single_url(
 ) -> ToolResult:
     """Convert a single URL to Markdown following directed fallback chains.
 
-    Starts with a primary tool and follows a specific fallback path if extraction fails 
+    Starts with a primary tool and follows a specific fallback path if extraction fails
     or returns low quality results (score < QUALITY_THRESHOLD).
 
     Args:
@@ -57,7 +62,9 @@ async def convert_single_url(
         try:
             result = await tool_fn(url=url, proxy_url=proxy_url, timeout=timeout)
         except Exception as exc:
-            logger.debug("Tool {} ({}) raised {}: {}", current_tid, tool_name, type(exc).__name__, exc)
+            logger.debug(
+                "Tool {} ({}) raised {}: {}", current_tid, tool_name, type(exc).__name__, exc
+            )
             result = ToolResult(
                 success=False,
                 markdown="",
@@ -157,7 +164,7 @@ async def process_urls(
                 "success": result.success,
                 "quality": result.quality_score,
                 "error": result.error,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
             # Write individual MD file for successful extractions
             if result.success and result.markdown:
@@ -175,7 +182,9 @@ async def process_urls(
                     succeeded += 1
                 else:
                     failed += 1
-            logger.info("Processed: {} ({}, quality {:.2f})", url, result.tool_name, result.quality_score)
+            logger.info(
+                "Processed: {} ({}, quality {:.2f})", url, result.tool_name, result.quality_score
+            )
 
     await asyncio.gather(*[_handle(url) for url in to_process])
 
@@ -190,7 +199,7 @@ async def process_urls(
 
 def _write_md_files(records: list[dict], output_dir: Path) -> None:
     """Write individual Markdown files for successful extractions.
-    
+
     Args:
         records: List of result records containing the extracted 'markdown'.
         output_dir: Destination directory.
@@ -206,9 +215,9 @@ def _write_md_files(records: list[dict], output_dir: Path) -> None:
 
 def _write_combined_md(records: list[dict], output_dir: Path) -> None:
     """Merge all extracted Markdown content into a single file.
-    
+
     Creates 'combined.md' in the output directory, separating articles with a horizontal rule and the URL.
-    
+
     Args:
         records: List of result records.
         output_dir: Destination directory.
@@ -227,9 +236,11 @@ def _write_combined_md(records: list[dict], output_dir: Path) -> None:
             logger.error("Failed to write {}: {}", filepath, exc)
 
 
-def _write_jsonl_report(records: list[dict], jsonl_path: Path, include_markdown: bool = False) -> None:
+def _write_jsonl_report(
+    records: list[dict], jsonl_path: Path, include_markdown: bool = False
+) -> None:
     """Save the operation summary to a JSONL file.
-    
+
     Args:
         records: List of result records.
         jsonl_path: Path to the target JSONL file.
@@ -244,7 +255,7 @@ def _write_jsonl_report(records: list[dict], jsonl_path: Path, include_markdown:
 
 def _emit_jsonl_stdout(records: list[dict]) -> None:
     """Print the complete records (including markdown content) to standard output.
-    
+
     Useful for piping the results to other CLI tools.
     """
     for rec in records:
@@ -318,10 +329,9 @@ def run_conversion(
             logger.info("Deleted report and {} output files", len(existing))
         else:
             logger.debug("No report file to clean at {}", report)
-    elif clean:
-        if report.exists():
-            report.unlink()
-            logger.info("Deleted report file {}", report)
+    elif clean and report.exists():
+        report.unlink()
+        logger.info("Deleted report file {}", report)
 
     if not urls:
         return {"total": 0, "processed": 0, "skipped": 0, "succeeded": 0, "failed": 0}

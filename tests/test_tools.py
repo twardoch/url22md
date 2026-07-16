@@ -10,7 +10,6 @@ from url22md.tools import (
     assess_quality,
 )
 
-
 # ---------------------------------------------------------------------------
 # assess_quality
 # ---------------------------------------------------------------------------
@@ -37,7 +36,8 @@ def test_assess_quality_good_markdown():
         "This is the first paragraph with enough content to be meaningful.\n\n"
         "This is the second paragraph which adds more substance to the article.\n\n"
         "Here is a [link to somewhere](https://example.com) for reference.\n\n"
-        + "A" * 600  # push well past 500-char threshold
+        + "A"
+        * 600  # push well past 500-char threshold
     )
     score = assess_quality(md)
     assert score > 0.5, f"Expected >0.5, got {score}"
@@ -141,7 +141,9 @@ def test_tools_registry_names():
         6: "readability",
     }
     for tid, (name, _fn) in TOOLS.items():
-        assert name == expected_names[tid], f"Tool {tid}: expected '{expected_names[tid]}', got '{name}'"
+        assert name == expected_names[tid], (
+            f"Tool {tid}: expected '{expected_names[tid]}', got '{name}'"
+        )
 
 
 def test_tools_registry_callables():
